@@ -1,0 +1,9 @@
+{
+	"extends": "./tsconfig.base.json",
+	"compilerOptions": {
+		"allowJs": true,
+		"checkJs": true
+	},
+	"include": ["scripts/"],
+	"files": ["./config.hardhat.ts", "./hardhat.config.ts", "./networks.hardhat.ts"]
+}
