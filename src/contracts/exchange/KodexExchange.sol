@@ -68,17 +68,17 @@ contract KodexExchange is Ownable, EIP712 {
 	///            EVENTS            ///
 	////////////////////////////////////
 
-	event NameListed(address indexed owner, uint256 indexed tokenId, uint128 askPrice, uint128 duration);
+	event NameListingCreated(address indexed owner, uint256 indexed tokenId, uint128 askPrice, uint128 duration);
 
-	event NameRemoved(uint256 indexed tokenId);
+	event NameListingRemoved(address indexed owner, uint256 indexed tokenId);
 
-	event NamePurchased(address indexed owner, address indexed buyer, uint256 indexed tokenId, uint128 askPrice);
+	event NameListingExecuted(address indexed owner, address indexed buyer, uint256 indexed tokenId, uint128 askPrice);
 
-	event NameOfferPlaced(address indexed offerer, uint256 indexed tokenId, uint128 offerAmount, uint128 duration);
+	event NameOfferCreated(address indexed owner, address indexed offerer, uint256 indexed tokenId, uint128 offerAmount, uint128 duration);
 
-	event NameOfferPulled(uint256 indexed tokenId, address indexed offerer);
+	event NameOfferRemoved(uint256 indexed tokenId, address indexed offerer);
 
-	event NameOfferAccepted(address indexed owner, address indexed offerer, uint256 indexed tokenId, uint128 offerAmount);
+	event NameOfferExecuted(address indexed owner, address indexed offerer, uint256 indexed tokenId, uint128 offerAmount);
 
 	////////////////////////////////////////////////////////////////////////////
 	///                            INITIALIZATION                            ///
@@ -142,7 +142,7 @@ contract KodexExchange is Ownable, EIP712 {
 	function cancelListing(uint256 _tokenId) public payable {
 		require(listings[_tokenId].tokenOwner == msg.sender, "SENDER_NOT_OWNER");
 
-		_cancelListing(_tokenId);
+		_cancelListing(msg.sender, _tokenId);
 	}
 
 	function pullOffer(uint256 _tokenId) public payable {
@@ -152,35 +152,40 @@ contract KodexExchange is Ownable, EIP712 {
 	function buy(uint256 _tokenId) public payable {
 		Listing memory listing = listings[_tokenId];
 
-		require(listing.tokenOwner != address(0), "LISTING_NOT_EXIST");
-		require(msg.value >= listing.askPrice, "MISSING_PAYMENT");
+		address tokenOwner = listing.tokenOwner;
+		uint128 askPrice = listing.askPrice;
+
+		require(tokenOwner != address(0), "LISTING_NOT_EXIST");
+		require(msg.value >= askPrice, "MISSING_PAYMENT");
 
 		// solhint-disable-next-line not-rely-on-time
 		if (block.timestamp > listing.duration) {
-			_cancelListing(_tokenId);
+			_cancelListing(tokenOwner, _tokenId);
 			revert("EXPIRED");
 		}
 
-		if (ensRegistry.ownerOf(_tokenId) != listing.tokenOwner) {
-			_cancelListing(_tokenId);
+		if (ensRegistry.ownerOf(_tokenId) != tokenOwner) {
+			_cancelListing(tokenOwner, _tokenId);
 			revert("LISTING_ASSET_NOT_OWNED");
 		}
 
-		if (!ensRegistry.isApprovedForAll(listing.tokenOwner, address(this))) {
-			_cancelListing(_tokenId);
+		if (!ensRegistry.isApprovedForAll(tokenOwner, address(this))) {
+			_cancelListing(tokenOwner, _tokenId);
 			revert("LISTING_NOT_APPROVED");
 		}
 
-		uint128 systemFeePayout = systemFeeWallet != address(0) ? (listing.askPrice / 1000) * systemFeePerMille : 0;
-		uint128 remainingPayout = listing.askPrice - systemFeePayout;
+		{
+			uint128 systemFeePayout = systemFeeWallet != address(0) ? (askPrice / 1000) * systemFeePerMille : 0;
+			uint128 remainingPayout = askPrice - systemFeePayout;
 
-		if (systemFeePayout > 0) SafeTransferLib.safeTransferETH(systemFeeWallet, systemFeePayout);
-		if (remainingPayout > 0) SafeTransferLib.safeTransferETH(listing.tokenOwner, remainingPayout);
+			if (systemFeePayout > 0) SafeTransferLib.safeTransferETH(systemFeeWallet, systemFeePayout);
+			if (remainingPayout > 0) SafeTransferLib.safeTransferETH(tokenOwner, remainingPayout);
 
-		ensRegistry.safeTransferFrom(listing.tokenOwner, msg.sender, _tokenId);
+			ensRegistry.safeTransferFrom(tokenOwner, msg.sender, _tokenId);
+		}
 
-		_cancelListing(_tokenId);
-		emit NamePurchased(listing.tokenOwner, msg.sender, _tokenId, listing.askPrice);
+		_cancelListing(tokenOwner, _tokenId);
+		emit NameListingExecuted(listing.tokenOwner, msg.sender, _tokenId, listing.askPrice);
 	}
 
 	function accept(uint256 _tokenId, address _offerer) public payable {
@@ -207,7 +212,7 @@ contract KodexExchange is Ownable, EIP712 {
 		ensRegistry.safeTransferFrom(msg.sender, _offerer, _tokenId);
 
 		_cancelOffer(_offerer, _tokenId);
-		emit NameOfferAccepted(msg.sender, _offerer, _tokenId, amount);
+		emit NameOfferExecuted(msg.sender, _offerer, _tokenId, amount);
 	}
 
 	function formOfferKey(uint256 _tokenId, address _offerer) public pure returns (bytes32) {
@@ -258,8 +263,8 @@ contract KodexExchange is Ownable, EIP712 {
 			log3(
 				0,
 				0x40,
-				// NameListed(address,uint256,uint128,uint128)
-				0xf6a4d4420dca02196de393dd446a2209d44d58a444517653ac0591be2be2a7b8,
+				// NameListingCreated(address,uint256,uint128,uint128)
+				0x900fcfad0288af4a138cdeb37f720da6f8488799bcc976c2a58d9ddb7fa5ff6f,
 				_seller,
 				_tokenId
 			)
@@ -280,16 +285,16 @@ contract KodexExchange is Ownable, EIP712 {
 		__offer.offerAmount = _offerAmount;
 		__offer.duration = _duration;
 
-		emit NameOfferPlaced(_offerer, _tokenId, _offerAmount, _duration);
+		emit NameOfferCreated(ensRegistry.ownerOf(_tokenId), _offerer, _tokenId, _offerAmount, _duration);
 	}
 
-	function _cancelListing(uint256 _tokenId) private {
-		emit NameRemoved(_tokenId);
+	function _cancelListing(address _owner, uint256 _tokenId) private {
+		emit NameListingRemoved(_owner, _tokenId);
 		delete listings[_tokenId];
 	}
 
 	function _cancelOffer(address _offerer, uint256 _tokenId) private {
-		emit NameOfferPulled(_tokenId, _offerer);
+		emit NameOfferRemoved(_tokenId, _offerer);
 		delete offers[formOfferKey(_tokenId, _offerer)];
 	}
 
