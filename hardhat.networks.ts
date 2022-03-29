@@ -1,8 +1,15 @@
 import type { NetworksUserConfig } from 'hardhat/types';
-import { alchemyRinkebyEthKey, testnetPrivateKey } from './config.hardhat';
+import { alchemyRinkebyEthKey, testnetPrivateKey } from './variables';
 
 export const networks: NetworksUserConfig = {
-	hardhat: {},
+	hardhat: {
+		accounts: {
+			mnemonic: 'test test test test test test test test test test test junk',
+			initialIndex: 0,
+			path: "m/44'/60'/0'/0",
+			count: 20
+		}
+	},
 	frame: {
 		url: 'http://127.0.0.1:1248'
 	},

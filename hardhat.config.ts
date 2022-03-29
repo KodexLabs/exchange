@@ -2,7 +2,7 @@ import '@nomiclabs/hardhat-ethers';
 import '@typechain/hardhat';
 import 'hardhat-abi-exporter';
 import { HardhatUserConfig, task } from 'hardhat/config';
-import { networks } from './networks.hardhat';
+import { networks } from './hardhat.networks';
 
 task('accounts', 'Prints the list of accounts', async (_, hre) => {
 	const accounts = await hre.ethers.getSigners();

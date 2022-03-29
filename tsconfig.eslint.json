@@ -5,5 +5,5 @@
 		"checkJs": true
 	},
 	"include": ["scripts/"],
-	"files": ["./config.hardhat.ts", "./hardhat.config.ts", "./networks.hardhat.ts"]
+	"files": ["./variables.ts", "./hardhat.config.ts", "./hardhat.networks.ts"]
 }
