@@ -8,7 +8,7 @@ async function main() {
 
 	const KodexExhangeContract = (await ethers.getContractFactory('KodexExchange')) as KodexExchange__factory;
 	const kodexExchange = await KodexExhangeContract.deploy(
-		'0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e',
+		'0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85',
 		// Rinkeby WETH
 		'0xc778417E063141139Fce010982780140Aa0cD5Ab',
 		deployer.address,
