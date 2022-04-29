@@ -275,6 +275,44 @@
         "internalType": "uint256",
         "name": "_tokenId",
         "type": "uint256"
+      },
+      {
+        "internalType": "uint128",
+        "name": "_askPrice",
+        "type": "uint128"
+      },
+      {
+        "internalType": "uint120",
+        "name": "_duration",
+        "type": "uint120"
+      },
+      {
+        "internalType": "uint8",
+        "name": "v",
+        "type": "uint8"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "r",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "s",
+        "type": "bytes32"
+      }
+    ],
+    "name": "buyWithSig",
+    "outputs": [],
+    "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_tokenId",
+        "type": "uint256"
       }
     ],
     "name": "cancelListing",
@@ -290,6 +328,25 @@
         "internalType": "contract ERC721",
         "name": "",
         "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "",
+        "type": "bytes32"
+      }
+    ],
+    "name": "expiredSignatures",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
       }
     ],
     "stateMutability": "view",
@@ -332,9 +389,9 @@
         "type": "uint128"
       },
       {
-        "internalType": "uint120",
+        "internalType": "uint128",
         "name": "_duration",
-        "type": "uint120"
+        "type": "uint128"
       },
       {
         "internalType": "uint8",
@@ -352,7 +409,7 @@
         "type": "bytes32"
       }
     ],
-    "name": "listBySig_m7b",
+    "name": "listBySig",
     "outputs": [],
     "stateMutability": "payable",
     "type": "function"
@@ -417,6 +474,19 @@
         "internalType": "string",
         "name": "",
         "type": "string"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "nonce",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
       }
     ],
     "stateMutability": "view",

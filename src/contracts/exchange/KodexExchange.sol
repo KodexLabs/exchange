@@ -9,15 +9,18 @@ import {ERC721} from "@rari-capital/solmate/src/tokens/ERC721.sol";
 
 import {SafeTransferLib} from "@rari-capital/solmate/src/utils/SafeTransferLib.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {Counters} from "@openzeppelin/contracts/utils/Counters.sol";
 
 /// @title Kodex Exchange
 /// @author Quantumlyy (https://github.com/quantumlyy)
 contract KodexExchange is Ownable, EIP712 {
+    using Counters for Counters.Counter;
+
 	//////////////////////////////////////////////////////////////////////////////////////
 	///                                EIP712 CONSTANTS                                ///
 	//////////////////////////////////////////////////////////////////////////////////////
 
-	bytes32 public constant _LIST_TYPEHASH = keccak256("List(uint256 tokenId,uint128 askPrice,uint120 duration)");
+	bytes32 public constant _LIST_TYPEHASH = keccak256("List(uint256 tokenId,uint128 askPrice,uint128 duration,uint256 nonce)");
 
 	///////////////////////////////////////////////////////////////////////////////////////////
 	///                                  CONTRACT METADATA                                  ///
@@ -63,6 +66,10 @@ contract KodexExchange is Ownable, EIP712 {
 	}
 
 	mapping(bytes32 => Offer) public offers;
+
+    mapping(bytes32 => bool) public expiredSignatures;
+
+    Counters.Counter private _nonces;
 
 	////////////////////////////////////
 	///            EVENTS            ///
@@ -114,21 +121,24 @@ contract KodexExchange is Ownable, EIP712 {
 	}
 
 	// solhint-disable-next-line func-name-mixedcase
-	function listBySig_m7b(
+	function listBySig(
 		uint256 _tokenId,
 		uint128 _askPrice,
-		uint120 _duration,
+		uint128 _duration,
 		uint8 v,
 		bytes32 r,
 		bytes32 s
 	) external payable {
-		bytes32 structHash = keccak256(abi.encode(_LIST_TYPEHASH, _tokenId, _askPrice, _duration));
+		bytes32 structHash = keccak256(abi.encode(_LIST_TYPEHASH, _tokenId, _askPrice, _duration, _useNonce()));
 		bytes32 hash = _hashTypedDataV4(structHash);
 
 		address signer = ECDSA.recover(hash, v, r, s);
 		require(signer != address(0), "SIGNATURE_INVALID");
+        require(expiredSignatures[hash] == false, "SIGNATURE_EXPIRED");
 
-		return _list_LkT(signer, _tokenId, _askPrice, _duration);
+		_list_LkT(signer, _tokenId, _askPrice, _duration);
+
+        expiredSignatures[hash] = true;
 	}
 
 	function offer(
@@ -147,6 +157,43 @@ contract KodexExchange is Ownable, EIP712 {
 
 	function pullOffer(uint256 _tokenId) public payable {
 		_cancelOffer(msg.sender, _tokenId);
+	}
+
+	function buyWithSig(
+		uint256 _tokenId,
+		uint128 _askPrice,
+		uint120 _duration,
+		uint8 v,
+		bytes32 r,
+		bytes32 s
+	) public payable {
+		// solhint-disable-next-line not-rely-on-time
+		require(block.timestamp < _duration, "LISTING_EXPIRED");
+
+		bytes32 structHash = keccak256(abi.encode(_LIST_TYPEHASH, _tokenId, _askPrice, _duration, _useNonce()));
+		bytes32 hash = _hashTypedDataV4(structHash);
+
+		address signer = ECDSA.recover(hash, v, r, s);
+		require(signer != address(0), "SIGNATURE_INVALID");
+        require(expiredSignatures[hash] == false, "SIGNATURE_EXPIRED");
+
+		require(ensRegistry.ownerOf(_tokenId) == signer, "LISTING_ASSET_NOT_OWNED");
+		require(ensRegistry.isApprovedForAll(signer, address(this)), "LISTING_NOT_APPROVED");
+
+		require(msg.value >= _askPrice, "MISSING_PAYMENT");
+
+		{
+			uint128 systemFeePayout = systemFeeWallet != address(0) ? (_askPrice / 1000) * systemFeePerMille : 0;
+			uint128 remainingPayout = _askPrice - systemFeePayout;
+
+			if (systemFeePayout > 0) SafeTransferLib.safeTransferETH(systemFeeWallet, systemFeePayout);
+			if (remainingPayout > 0) SafeTransferLib.safeTransferETH(signer, remainingPayout);
+
+			ensRegistry.safeTransferFrom(signer, msg.sender, _tokenId);
+		}
+
+        expiredSignatures[hash] = true;
+		emit NameListingExecuted(signer, msg.sender, _tokenId, _askPrice);
 	}
 
 	function buy(uint256 _tokenId) public payable {
@@ -298,6 +345,11 @@ contract KodexExchange is Ownable, EIP712 {
 		delete offers[formOfferKey(_tokenId, _offerer)];
 	}
 
+    function _useNonce() internal returns (uint256 current) {
+        current = _nonces.current();
+        _nonces.increment();
+    }
+
 	///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	///                                          INFORMATIVE FUNCTIONS                                          ///
 	///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -305,4 +357,8 @@ contract KodexExchange is Ownable, EIP712 {
 	function version() public pure returns (string memory) {
 		return "0";
 	}
+
+    function nonce() public view returns (uint256) {
+        return _nonces.current();
+    }
 }
