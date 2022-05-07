@@ -1,7 +1,7 @@
 import { ethers } from 'hardhat';
 import type { KodexExchange__factory } from '../typechain';
 
-const SYSTEM_FEE = 30; // 3%
+const SYSTEM_FEE = 69; // 0,69%
 
 async function main() {
 	const [deployer] = await ethers.getSigners();

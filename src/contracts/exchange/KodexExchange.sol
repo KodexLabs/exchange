@@ -20,7 +20,7 @@ contract KodexExchange is Ownable, EIP712 {
 	///                                EIP712 CONSTANTS                                ///
 	//////////////////////////////////////////////////////////////////////////////////////
 
-	bytes32 public constant _LIST_TYPEHASH = keccak256("List(uint256 tokenId,uint128 askPrice,uint128 duration,uint256 nonce)");
+	bytes32 public constant _LIST_TYPEHASH = keccak256("List(address seller,uint256 tokenId,uint128 askPrice,uint128 duration,uint256 nonce)");
 
 	///////////////////////////////////////////////////////////////////////////////////////////
 	///                                  CONTRACT METADATA                                  ///
@@ -44,8 +44,10 @@ contract KodexExchange is Ownable, EIP712 {
 	/// @dev The wallet address to which system fees get paid.
 	address private systemFeeWallet;
 
-	/// @dev System fee in %. Example: 10 => 1%, 25 => 2,5%, 300 => 30%
-	uint96 private systemFeePerMille;
+	/// @dev System fee in %. Example: 10 => 0,1%, 25 => 0,25%, 300 => 3,0%
+	uint96 private systemFeePerStep;
+
+    uint16 private systemFeeStep;
 
 	////////////////////////////////
 	///          ORDERS          ///
@@ -69,7 +71,7 @@ contract KodexExchange is Ownable, EIP712 {
 
     mapping(bytes32 => bool) public expiredSignatures;
 
-    Counters.Counter private _nonces;
+    mapping(address => Counters.Counter) private _nonces;
 
 	////////////////////////////////////
 	///            EVENTS            ///
@@ -78,6 +80,8 @@ contract KodexExchange is Ownable, EIP712 {
 	event NameListingCreated(address indexed owner, uint256 indexed tokenId, uint128 askPrice, uint128 duration);
 
 	event NameListingRemoved(address indexed owner, uint256 indexed tokenId);
+
+	event NameSignatureListingRemoved(address indexed owner, uint256 indexed tokenId, uint128 askPrice, uint128 duration, uint256 nonce, address indexed remover);
 
 	event NameListingExecuted(address indexed owner, address indexed buyer, uint256 indexed tokenId, uint128 askPrice);
 
@@ -96,7 +100,7 @@ contract KodexExchange is Ownable, EIP712 {
 		address _ensAddress,
 		address _weth,
 		address _systemFeeWallet,
-		uint96 _systemFeePerMille
+		uint96 _systemFeePerStep
 	) EIP712(name, version()) {
 		require(_ensAddress != address(0), "ADDRESS_REGISTRY_INVALID");
 		ensRegistry = ERC721(_ensAddress);
@@ -104,7 +108,8 @@ contract KodexExchange is Ownable, EIP712 {
 		WETH = IERC20(_weth);
 
 		systemFeeWallet = _systemFeeWallet;
-		systemFeePerMille = _systemFeePerMille;
+		systemFeePerStep = _systemFeePerStep;
+        systemFeeStep = 10000;
 	}
 
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -112,16 +117,16 @@ contract KodexExchange is Ownable, EIP712 {
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 	// solhint-disable-next-line func-name-mixedcase
-	function list_i52(
+	function list(
 		uint256 _tokenId,
 		uint128 _askPrice,
 		uint128 _duration
 	) external payable {
-		return _list_LkT(msg.sender, _tokenId, _askPrice, _duration);
+		return _list(msg.sender, _tokenId, _askPrice, _duration);
 	}
 
-	// solhint-disable-next-line func-name-mixedcase
 	function listBySig(
+		address _seller,
 		uint256 _tokenId,
 		uint128 _askPrice,
 		uint128 _duration,
@@ -129,14 +134,14 @@ contract KodexExchange is Ownable, EIP712 {
 		bytes32 r,
 		bytes32 s
 	) external payable {
-		bytes32 structHash = keccak256(abi.encode(_LIST_TYPEHASH, _tokenId, _askPrice, _duration, _useNonce()));
+		bytes32 structHash = keccak256(abi.encode(_LIST_TYPEHASH, _seller, _tokenId, _askPrice, _duration, _useNonce(_seller)));
 		bytes32 hash = _hashTypedDataV4(structHash);
 
 		address signer = ECDSA.recover(hash, v, r, s);
 		require(signer != address(0), "SIGNATURE_INVALID");
         require(expiredSignatures[hash] == false, "SIGNATURE_EXPIRED");
 
-		_list_LkT(signer, _tokenId, _askPrice, _duration);
+		_list(signer, _tokenId, _askPrice, _duration);
 
         expiredSignatures[hash] = true;
 	}
@@ -149,28 +154,43 @@ contract KodexExchange is Ownable, EIP712 {
 		return _offer(msg.sender, _tokenId, _offerAmount, _duration);
 	}
 
-	function cancelListing(uint256 _tokenId) public payable {
+	function cancelListing(uint256 _tokenId) external payable {
 		require(listings[_tokenId].tokenOwner == msg.sender, "SENDER_NOT_OWNER");
 
 		_cancelListing(msg.sender, _tokenId);
 	}
 
-	function pullOffer(uint256 _tokenId) public payable {
+    function cancelSignature(
+		address _seller,
+		uint256 _tokenId,
+		uint128 _askPrice,
+		uint128 _duration
+    ) external payable {
+        bytes32 structHash = keccak256(abi.encode(_LIST_TYPEHASH, _seller, _tokenId, _askPrice, _duration, nonces(_seller)));
+		bytes32 hash = _hashTypedDataV4(structHash);
+
+        expiredSignatures[hash] = true;
+
+        emit NameSignatureListingRemoved(_seller, _tokenId, _askPrice, _duration, nonces(_seller), msg.sender);
+	}
+
+	function pullOffer(uint256 _tokenId) external payable {
 		_cancelOffer(msg.sender, _tokenId);
 	}
 
 	function buyWithSig(
+		address _seller,
 		uint256 _tokenId,
 		uint128 _askPrice,
 		uint120 _duration,
 		uint8 v,
 		bytes32 r,
 		bytes32 s
-	) public payable {
+	) external payable {
 		// solhint-disable-next-line not-rely-on-time
 		require(block.timestamp < _duration, "LISTING_EXPIRED");
 
-		bytes32 structHash = keccak256(abi.encode(_LIST_TYPEHASH, _tokenId, _askPrice, _duration, _useNonce()));
+		bytes32 structHash = keccak256(abi.encode(_LIST_TYPEHASH, _seller, _tokenId, _askPrice, _duration, _useNonce(_seller)));
 		bytes32 hash = _hashTypedDataV4(structHash);
 
 		address signer = ECDSA.recover(hash, v, r, s);
@@ -183,7 +203,7 @@ contract KodexExchange is Ownable, EIP712 {
 		require(msg.value >= _askPrice, "MISSING_PAYMENT");
 
 		{
-			uint128 systemFeePayout = systemFeeWallet != address(0) ? (_askPrice / 1000) * systemFeePerMille : 0;
+			uint128 systemFeePayout = systemFeeWallet != address(0) ? (_askPrice / systemFeeStep) * systemFeePerStep : 0;
 			uint128 remainingPayout = _askPrice - systemFeePayout;
 
 			if (systemFeePayout > 0) SafeTransferLib.safeTransferETH(systemFeeWallet, systemFeePayout);
@@ -196,7 +216,7 @@ contract KodexExchange is Ownable, EIP712 {
 		emit NameListingExecuted(signer, msg.sender, _tokenId, _askPrice);
 	}
 
-	function buy(uint256 _tokenId) public payable {
+	function buy(uint256 _tokenId) external payable {
 		Listing memory listing = listings[_tokenId];
 
 		address tokenOwner = listing.tokenOwner;
@@ -222,7 +242,7 @@ contract KodexExchange is Ownable, EIP712 {
 		}
 
 		{
-			uint128 systemFeePayout = systemFeeWallet != address(0) ? (askPrice / 1000) * systemFeePerMille : 0;
+			uint128 systemFeePayout = systemFeeWallet != address(0) ? (askPrice / systemFeeStep) * systemFeePerStep : 0;
 			uint128 remainingPayout = askPrice - systemFeePayout;
 
 			if (systemFeePayout > 0) SafeTransferLib.safeTransferETH(systemFeeWallet, systemFeePayout);
@@ -235,7 +255,7 @@ contract KodexExchange is Ownable, EIP712 {
 		emit NameListingExecuted(listing.tokenOwner, msg.sender, _tokenId, listing.askPrice);
 	}
 
-	function accept(uint256 _tokenId, address _offerer) public payable {
+	function accept(uint256 _tokenId, address _offerer) external payable {
 		Offer memory __offer = offers[formOfferKey(_tokenId, _offerer)];
 
 		require(__offer.duration >= 1, "OFFER_NOT_EXIST");
@@ -250,7 +270,7 @@ contract KodexExchange is Ownable, EIP712 {
 		}
 
 		uint128 amount = __offer.offerAmount;
-		uint128 systemFeePayout = systemFeeWallet != address(0) ? (amount / 1000) * systemFeePerMille : 0;
+		uint128 systemFeePayout = systemFeeWallet != address(0) ? (amount / systemFeeStep) * systemFeePerStep : 0;
 		uint128 remainingPayout = amount - systemFeePayout;
 
 		if (systemFeePayout > 0) WETH.transferFrom(_offerer, systemFeeWallet, systemFeePayout);
@@ -277,9 +297,13 @@ contract KodexExchange is Ownable, EIP712 {
 	}
 
 	/// @notice Sets the new overall fee %. Example: 10 => 1%, 25 => 2,5%, 300 => 30%
-	/// @param _newSystemFeePerMille New fee amount.
-	function setSystemFeePerMille(uint96 _newSystemFeePerMille) external onlyOwner {
-		systemFeePerMille = _newSystemFeePerMille;
+	/// @param _newsystemFeePerStep New fee amount.
+	function setsystemFeePerStep(uint96 _newsystemFeePerStep) external onlyOwner {
+		systemFeePerStep = _newsystemFeePerStep;
+	}
+
+	function setsystemFeeStep(uint16 _newsystemFeeStep) external onlyOwner {
+		systemFeeStep = _newsystemFeeStep;
 	}
 
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -287,12 +311,12 @@ contract KodexExchange is Ownable, EIP712 {
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 	// solhint-disable-next-line func-name-mixedcase
-	function _list_LkT(
+	function _list(
 		address _seller,
 		uint256 _tokenId,
 		uint128 _askPrice,
 		uint128 _duration
-	) private {
+	) internal {
 		// solhint-disable-next-line not-rely-on-time
 		require(block.timestamp < _duration, "LISTING_EXPIRED");
 		require(ensRegistry.ownerOf(_tokenId) == _seller, "LISTING_ASSET_NOT_OWNED");
@@ -323,7 +347,7 @@ contract KodexExchange is Ownable, EIP712 {
 		uint256 _tokenId,
 		uint128 _offerAmount,
 		uint128 _duration
-	) private {
+	) internal {
 		// solhint-disable-next-line not-rely-on-time
 		require(block.timestamp < _duration, "OFFER_EXPIRED");
 		require(WETH.allowance(_offerer, address(this)) >= _offerAmount, "OFFER_ALLOWANCE_LOW");
@@ -335,19 +359,20 @@ contract KodexExchange is Ownable, EIP712 {
 		emit NameOfferCreated(ensRegistry.ownerOf(_tokenId), _offerer, _tokenId, _offerAmount, _duration);
 	}
 
-	function _cancelListing(address _owner, uint256 _tokenId) private {
+	function _cancelListing(address _owner, uint256 _tokenId) internal {
 		emit NameListingRemoved(_owner, _tokenId);
 		delete listings[_tokenId];
 	}
 
-	function _cancelOffer(address _offerer, uint256 _tokenId) private {
+	function _cancelOffer(address _offerer, uint256 _tokenId) internal {
 		emit NameOfferRemoved(_tokenId, _offerer);
 		delete offers[formOfferKey(_tokenId, _offerer)];
 	}
 
-    function _useNonce() internal returns (uint256 current) {
-        current = _nonces.current();
-        _nonces.increment();
+    function _useNonce(address owner) internal returns (uint256 current) {
+        Counters.Counter storage nonce = _nonces[owner];
+        current = nonce.current();
+        nonce.increment();
     }
 
 	///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -358,7 +383,7 @@ contract KodexExchange is Ownable, EIP712 {
 		return "0";
 	}
 
-    function nonce() public view returns (uint256) {
-        return _nonces.current();
+    function nonces(address owner) public view returns (uint256) {
+        return _nonces[owner].current();
     }
 }
