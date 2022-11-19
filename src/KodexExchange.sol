@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 
-pragma solidity ^0.8.11;
+pragma solidity ^0.8.17;
 
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -60,12 +60,14 @@ import {SafeTransferLib} from "solmate/utils/SafeTransferLib.sol";
 import {ECDSA} from "openzeppelin-contracts/utils/cryptography/ECDSA.sol";
 import {Counters} from "openzeppelin-contracts/utils/Counters.sol";
 
+import {IKodexExchange} from "./interfaces/IKodexExchange.sol";
+
 /// @title KodexExchange
 /// @author quantumlyy
 /// @author mevbandit
 /// @author perpetuum7 <perpetuum7@proton.me>
 /// @notice The core contract of the Kodex exchange.
-contract KodexExchange is Ownable, EIP712, Pausable {
+contract KodexExchange is Ownable, EIP712, Pausable, IKodexExchange {
     using Counters for Counters.Counter;
 
     //////////////////////////////////////////////////////////////////////////////////////
@@ -125,35 +127,6 @@ contract KodexExchange is Ownable, EIP712, Pausable {
     mapping(bytes32 => bool) public expiredSignatures;
 
     mapping(address => Counters.Counter) private _nonces;
-
-    ////////////////////////////////////
-    ///            EVENTS            ///
-    ////////////////////////////////////
-
-    event NameListingCreated(address indexed owner, uint256 indexed tokenId, uint128 askPrice, uint128 duration);
-
-    event NameListingRemoved(address indexed owner, uint256 indexed tokenId);
-
-    event NameSignatureListingRemoved(
-        address indexed owner,
-        uint256 indexed tokenId,
-        uint128 askPrice,
-        uint128 duration,
-        uint256 nonce,
-        address indexed remover
-    );
-
-    event NameListingExecuted(address indexed owner, address indexed buyer, uint256 indexed tokenId, uint128 askPrice);
-
-    event NameOfferCreated(
-        address indexed owner, address indexed offerer, uint256 indexed tokenId, uint128 offerAmount, uint128 duration
-    );
-
-    event NameOfferRemoved(uint256 indexed tokenId, address indexed offerer);
-
-    event NameOfferExecuted(
-        address indexed owner, address indexed offerer, uint256 indexed tokenId, uint128 offerAmount
-    );
 
     ////////////////////////////////////////////////////////////////////////////
     ///                            INITIALIZATION                            ///
