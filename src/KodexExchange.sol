@@ -64,7 +64,7 @@ import {IKodexExchange} from "./interfaces/IKodexExchange.sol";
 
 /// @title KodexExchange
 /// @author quantumlyy
-/// @author mevbandit
+/// @author mevbandit <mevbandit@gmail.com>
 /// @author perpetuum7 <perpetuum7@proton.me>
 /// @notice The core contract of the Kodex exchange.
 contract KodexExchange is Ownable, EIP712, Pausable, IKodexExchange {
