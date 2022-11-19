@@ -6,9 +6,9 @@ import {EIP712} from "@openzeppelin/contracts/utils/cryptography/draft-EIP712.so
 import {Pausable} from "@openzeppelin/contracts/security/Pausable.sol";
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {ERC721} from "@rari-capital/solmate/src/tokens/ERC721.sol";
+import {ERC721} from "solmate/tokens/ERC721.sol";
 
-import {SafeTransferLib} from "@rari-capital/solmate/src/utils/SafeTransferLib.sol";
+import {SafeTransferLib} from "solmate/utils/SafeTransferLib.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {Counters} from "@openzeppelin/contracts/utils/Counters.sol";
 
