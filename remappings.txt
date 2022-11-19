@@ -1,0 +1,4 @@
+ds-test/=lib/ds-test/src/
+solid/=lib/solid/src/
+solmate/=lib/solmate/src/
+weird-erc20/=lib/solid/lib/solmate/lib/weird-erc20/src/
